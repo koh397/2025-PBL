@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>健康管理ダッシュボード</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>健康管理ダッシュボード ({{ name }}さん)</h1>
+
+    <fieldset style="margin-bottom: 20px;">
+        <legend>今日の記録</legend>
+        <form method="POST">
+            身長(cm): <input type="number" step="0.1" name="height" required>
+            体重(kg): <input type="number" step="0.1" name="weight" required>
+            <button type="submit">記録する</button>
+        </form>
+    </fieldset>
+
+    <fieldset style="margin-bottom: 20px;">
+        <legend>目標設定</legend>
+        <form method="POST" action="/update_target">
+            目標体重: <input type="number" step="0.1" name="target_weight" value="{{ target_weight }}" required> kg
+            <button type="submit">目標を更新</button>
+        </form>
+    </fieldset>
+
+    {% if bmis and target_weight > 0 %}
+    <div style="text-align: center; font-size: 1.2em; color: #2c3e50; margin: 10px;">
+        {% set current_w = weights[-1] %}
+        {% set diff = (current_w - target_weight)|round(1) %}
+        {% if diff > 0 %}
+            目標まであと <strong>{{ diff }} kg</strong> です。頑張りましょう！
+        {% elif diff == 0 %}
+            目標達成です！おめでとうございます！
+        {% else %}
+            目標を <strong>{{ diff|abs }} kg</strong> 下回っています。
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <hr>
+
+    <div style="text-align: center; margin-top: 20px; margin-bottom: 10px;">
+        <button onclick="updateChart(7)">1週間</button>
+        <button onclick="updateChart(30)">1ヶ月</button>
+        <button onclick="updateChart(180)">半年</button>
+        <button onclick="updateChart(365)">1年</button>
+        <button onclick="updateChart(0)">全期間</button>
+    </div>
+
+    <div style="width: 90%; margin: 0 auto;">
+        <canvas id="healthChart"></canvas>
+    </div>
+
+    <div id="result-area" style="margin: 30px auto; width: 80%; padding: 15px; border: 1px solid #ddd; background-color: #f9f9f9; border-radius: 8px;">
+        <h2 style="margin-top: 0;">現在の判定結果</h2>
+        {% if bmi %}
+            <p>あなたの現在のBMIは <strong>{{ bmi }}</strong> です。</p>
+            <p>判定：<span style="font-size: 1.2em; color: #e74c3c;"><strong>{{ evaluation }}</strong></span></p>
+        {% else %}
+            <p>数値を入力して「記録する」を押すと、ここにBMIと評価が表示されます。</p>
+        {% endif %}
+    </div>
+
+    <script>
+    // Flaskから渡された全データを保持
+    const allLabels = {{ dates|tojson }};
+    const allWeights = {{ weights|tojson }};
+    const allBMIs = {{ bmis|tojson }};
+    const targetWeight = {{ target_weight or 0 }}; // Flaskから渡された目標体重
+
+    const ctx = document.getElementById('healthChart').getContext('2d');
+    let healthChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: allLabels,
+            datasets: [{
+                label: '体重 (kg)',
+                data: allWeights,
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                yAxisID: 'y',
+                tension: 0.1,
+                fill: false
+            }, {
+                label: 'BMI',
+                data: allBMIs,
+                borderColor: 'rgb(255, 99, 132)',
+                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                yAxisID: 'y1',
+                tension: 0.1,
+                fill: false
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                // 目標体重のライン（Annotationプラグイン）の設定
+                annotation: {
+                    annotations: {
+                        line1: {
+                            type: 'line',
+                            yMin: targetWeight,
+                            yMax: targetWeight,
+                            borderColor: 'rgb(255, 159, 64)', // 目標ラインはオレンジ色
+                            borderWidth: 3,
+                            borderDash: [6, 6], // 点線にする
+                            label: {
+                                display: true,
+                                content: '目標: ' + targetWeight + 'kg',
+                                position: 'end',
+                                backgroundColor: 'rgba(255, 159, 64, 0.8)',
+                                color: 'white'
+                            }
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: { 
+                    type: 'linear', 
+                    position: 'left', 
+                    title: { display: true, text: '体重 (kg)' } 
+                },
+                y1: { 
+                    type: 'linear', 
+                    position: 'right', 
+                    title: { display: true, text: 'BMI' }, 
+                    grid: { drawOnChartArea: false } 
+                }
+            }
+        }
+    });
+
+    // 期間切り替え関数
+    function updateChart(days) {
+        if (days === 0) {
+            healthChart.data.labels = allLabels;
+            healthChart.data.datasets[0].data = allWeights;
+            healthChart.data.datasets[1].data = allBMIs;
+        } else {
+            healthChart.data.labels = allLabels.slice(-days);
+            healthChart.data.datasets[0].data = allWeights.slice(-days);
+            healthChart.data.datasets[1].data = allBMIs.slice(-days);
+        }
+        healthChart.update();
+    }
+    </script>
+</body>
+</html>
